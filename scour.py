@@ -30,9 +30,9 @@ def calc_wave_length(T, h):
     return max(L_curr, 0.001)
 
 st.title("🌊 항외측 세굴방지공 단면제원 자동 계산")
-st.markdown("### Thompson and Vincent 도표 연동 및 전체 산정 결과")
+st.markdown("### 원본 로직 기반 Thompson and Vincent 도표 및 전체 산정 결과")
 
-# 결과 요약표가 들어갈 상단 홀더
+# 결과 요약표가 들어갈 상단 홀더 (결과가 계산된 후 맨 위에 표시됨)
 summary_placeholder = st.empty()
 
 # ==========================================
@@ -75,7 +75,7 @@ u_bottom = (math.pi * H_input) / (T_input * math.sinh(kh_init))
 u_z = (math.pi * H_input / T_input) * (math.cosh(2 * math.pi * (z_depth + h_bed) / L_init) / math.sinh(kh_init))
 
 # ==========================================
-# 3. 1. 원지반 세굴여부 판정
+# 3. 1. 원지반 세굴여부 판정 (사토-다나카)
 # ==========================================
 st.header("1. 원지반 세굴여부 판정")
 def run_sato_tanaka(alpha):
@@ -117,7 +117,7 @@ if scour_status == "필요":
     W_final_ton = W_max_kN / 9.81
     control_factor = "파랑 (Wave)" if W_wave >= W_tidal else "조류 (Tidal)"
 
-    # --- 나. 세굴심도 상세 산정 (로직 분리) ---
+    # --- 나. 세굴심도 상세 산정 ---
     if structure_type == "직립제 (Vertical)":
         if location_type == "제두부 (Head)":
             KC = (u_bottom * T_input) / B_width
@@ -133,24 +133,23 @@ if scour_status == "필요":
                 kph = kp * h_bed
                 d_bar = h_bed / (9.81 * (Tp**2))
                 
-                # 1. 도표용 Hs_ratio 먼저 계산
-                Hs_ratio = 1.0 # 기본값
+                # 독취용 Hs_ratio 기본값
+                Hs_ratio = 1.25 
+                
+                # [도표 연동 및 출력 로직]
                 try:
                     csv_path = os.path.join(BASE_DIR, "tav_data_all.csv")
                     df_tav = pd.read_csv(csv_path, skiprows=2, header=None)
                     for col in df_tav.columns: df_tav[col] = pd.to_numeric(df_tav[col], errors='coerce')
                     
-                    # AVERAGE 곡선 데이터로 Hs_ratio 보간
+                    # Hs_ratio 보간 계산
                     ax_raw = df_tav.iloc[:, 2].dropna().values
                     ay_raw = df_tav.iloc[:, 3].dropna().values
                     s_idx = np.argsort(ax_raw)
                     p_avg = PchipInterpolator(ax_raw[s_idx], ay_raw[s_idx])
                     Hs_ratio = float(p_avg(d_bar)) if ax_raw.min() <= d_bar <= ax_raw.max() else float(np.interp(d_bar, ax_raw[s_idx], ay_raw[s_idx]))
-                except:
-                    pass
-                
-                # 2. 도표 출력 (별도 try-except로 감싸서 에러 시에도 아래 계산이 되도록 함)
-                try:
+
+                    # 도표 그리기 (원본 로직 보존)
                     fig, ax = plt.subplots(figsize=(8.5, 7.5))
                     eps_list = [('0.01', 4, 5, 0.0013), ('0.008', 6, 7, 0.0016), ('0.007', 8, 9, 0.0020),
                                 ('0.006', 10, 11, 0.0026), ('0.005', 12, 13, 0.0035), ('0.004', 14, 15, 0.0050),
@@ -164,11 +163,9 @@ if scour_status == "필요":
                             xs = np.logspace(np.log10(ex.min()), np.log10(ex.max()), 100)
                             ax.plot(xs, p_eps(xs), 'k-', linewidth=0.8, alpha=0.5, zorder=1)
                             lab_x = max(ex.min()*1.05, min(tx, ex.max()*0.95))
-                            lab_y = float(p_eps(lab_x))
                             dx = lab_x * 0.05
-                            dy = float(p_eps(lab_x + dx)) - lab_y
-                            slope = np.degrees(np.arctan2(dy, (np.log10(lab_x+dx)-np.log10(lab_x))*5))
-                            ax.text(lab_x, lab_y, rf"$\epsilon={name}$", fontsize=8.5, rotation=slope, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none', pad=0.1), zorder=2)
+                            slope = np.degrees(np.arctan2(float(p_eps(lab_x+dx)) - float(p_eps(lab_x)), (np.log10(lab_x+dx)-np.log10(lab_x))*5))
+                            ax.text(lab_x, float(p_eps(lab_x)), rf"$\epsilon={name}$", fontsize=8.5, rotation=slope, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none', pad=0.1), zorder=2)
                     
                     for c_idx, name, y_pos in [(0, 'MAXIMUM', 1.76), (2, 'AVERAGE', 1.70)]:
                         rx, ry = df_tav.iloc[:, c_idx].dropna().values, df_tav.iloc[:, c_idx+1].dropna().values
@@ -187,9 +184,9 @@ if scour_status == "필요":
                     
                     st.pyplot(fig)
                 except Exception as e:
-                    st.warning(f"도표 출력 중 시각화 에러가 발생했습니다: {e}")
+                    st.warning(f"⚠️ 도표 연동 중 미세 오류 발생(계산은 계속 진행됩니다): {e}")
 
-                # 3. 실제 세굴심 산정 (도표 출력과 무관하게 무조건 실행)
+                # [계산 마무리 로직]
                 Hmo = H_input / Hs_ratio
                 Urms = (9.81 * kp * Tp * Hmo) * (math.sqrt(2)/(4*math.pi*math.cosh(kph))) * (0.54 * math.cosh((1.5-kph)/2.8))
                 Sm_val = round((Urms * Tp * 0.05) / (math.sinh(kph)**0.35), 2)
@@ -198,7 +195,7 @@ if scour_status == "필요":
     else: # 경사제
         Tp = 1.05 * T_input
         Sm_val = round(H_input * 0.01 * Cu_input * ((Tp * math.sqrt(9.81*H_input))/h_bed)**1.5, 2)
-        st.markdown(f"**경사제 세굴심 산정 결과:** $S_m = {Sm_val:.2f}$ m")
+        st.markdown(f"**경사제 세굴심 산정:** $S_m = {Sm_val:.2f}$ m")
 
     # --- 다. 보강폭 및 두께 산정 ---
     final_sm_val = max(0.0, Sm_val)
@@ -216,15 +213,16 @@ if scour_status == "필요":
         img = Image.open(img_path)
         img = ImageEnhance.Contrast(img).enhance(1.2); img = ImageEnhance.Sharpness(img).enhance(2.0)
         w, h = img.size
+        # 잔재 제거를 위해 46% / 54% 지점으로 정밀하게 자름
         if "매설형" in protection_type:
             cropped = img.crop((0, 0, int(w*0.46), h)) 
         else:
             cropped = img.crop((int(w*0.54), 0, w, h))
-        st.markdown(f"**[{protection_type}] 기준 단면 삽도**")
+        st.markdown(f"**[{protection_type.split(' ')[0]}] 기준 단면 삽도**")
         c1, c2, c3 = st.columns([1.2, 1.5, 1.2])
         with c2: st.image(cropped, use_column_width=True)
     except:
-        st.warning("⚠️ 'image_efd977.png' 이미지를 불러올 수 없습니다.")
+        st.warning("⚠️ 'image_efd977.png' 이미지를 찾을 수 없습니다.")
 
 else:
     st.write("원지반이 안정하여 보강 계획이 필요하지 않습니다.")
