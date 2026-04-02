@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import PchipInterpolator
-from PIL import Image, ImageEnhance  # 이미지 보정을 위한 ImageEnhance 추가
+from PIL import Image, ImageEnhance
 
 # ==========================================
 # 1. 페이지 설정
@@ -33,7 +33,7 @@ st.title("🌊 항외측 세굴방지공 단면제원 자동 계산")
 st.markdown("### 산정 결과값(-) 표시 및 직립제/경사제 로직 완벽 분리")
 
 # ==========================================
-# ★ 추가: 전체결과 요약표가 들어갈 자리 확보 (st.empty)
+# ★ 전체결과 요약표가 들어갈 자리 확보 (st.empty)
 # ==========================================
 summary_placeholder = st.empty()
 
@@ -92,23 +92,20 @@ g_val = 9.81
 L0_val = (g_val * (T_input**2)) / (2 * math.pi)
 L_init = calc_wave_length(T_input, h_bed)
 
-# 🌟 에러 방지: 0으로 나누기 방지
 kh_init = 2 * math.pi * h_bed / L_init
 sinh_kh = math.sinh(kh_init) if math.sinh(kh_init) != 0 else 0.001
 tanh_kh = math.tanh(kh_init) if math.tanh(kh_init) != 0 else 0.001
 
 n_val = 0.5 * (1 + (2 * kh_init) / sinh_kh)
-# 🌟 에러 방지: math.sqrt 안에는 무조건 양수(abs)만 들어가도록 방어
 Ks_val = math.sqrt(abs(1 / (tanh_kh * 2 * n_val)))
 H0_prime = H_input / Ks_val
 
-# 전역(Global) 수립자 속도 산정
 u_bottom = (math.pi * H_input) / (T_input * sinh_kh)
 term_z = 2 * math.pi * (z_depth + h_bed) / L_init
 u_z = (math.pi * H_input / T_input) * (math.cosh(term_z) / sinh_kh)
 
 # ==========================================
-# 4. 1. 원지반 세굴여부 판정 (상세 시산 과정 포함)
+# 4. 1. 원지반 세굴여부 판정
 # ==========================================
 st.header("1. 원지반 세굴여부 판정")
 
@@ -178,7 +175,7 @@ else:
 st.markdown("---")
 st.header("2. 세굴방지공 계획")
 
-# 초기화 (요약표에서 에러 방지용)
+# 변수 초기화
 Sm_val = 0.0 
 d_final = 0.0
 W_final_ton = 0.0
@@ -187,10 +184,8 @@ thickness = 0.0
 control_factor = "-"
 
 if scour_status == "필요":
-    
     st.subheader("가. 세굴방지공 규격검토 (Isbash 공식 적용)")
     
-    # 🌟 에러 방지: Isbash 계수 0 분모 방어
     S_r = gamma_r / gamma_w
     if S_r <= 1.0: S_r = 1.01 
     
@@ -205,7 +200,6 @@ if scour_status == "필요":
     st.latex(rf"U_z = \frac{{\pi H}}{{T}} \frac{{\cosh[2\pi(z+h)/L]}}{{\sinh(2\pi h/L)}}")
     st.latex(rf"U_z = \frac{{\pi \times {H_input:.2f}}}{{{T_input:.2f}}} \times \frac{{\cosh[2\pi({z_depth:.2f} + {h_bed:.2f})/{L_init:.2f}]}}{{\sinh(2\pi \times {h_bed:.2f} / {L_init:.2f})}} = {u_z:.4f} \, m/s")
     
-    # 파랑 Isbash 산정
     W_wave_kN = (math.pi * gamma_r * (u_z**6)) / denom_W
     W_wave_ton = W_wave_kN / g_val
     V_wave_m3 = W_wave_kN / gamma_r
@@ -221,7 +215,6 @@ if scour_status == "필요":
     st.markdown("**가) 설계 조류속($V_c$) 적용**")
     st.latex(rf"V_c = {v_tidal:.2f} \, m/s \quad \text{{(설계 적용 조류속)}}")
     
-    # 조류 Isbash 산정
     W_current_kN = (math.pi * gamma_r * (v_tidal**6)) / denom_W
     W_current_ton = W_current_kN / g_val
     V_current_m3 = W_current_kN / gamma_r
@@ -253,7 +246,6 @@ if scour_status == "필요":
     
     st.info(f"**💡 결정 지배 요소:** {control_factor}\n\n**최종 필요 소요 직경 (d):** {d_final:.3f} m  /  **최종 필요 소요 중량 (W):** {W_final_kN:.3f} kN ({W_final_ton:.3f} ton, **{V_final_m3:.3f} m³**)\n\n*(설계 적용 피복재 공칭직경 r = {r_stone:.2f} m)*")
 
-    # 🌟 나. 세굴심도 상세
     st.subheader("나. 세굴심도($S_m$) 산정 상세")
     
     if structure_type == "직립제 (Vertical)":
@@ -266,16 +258,14 @@ if scour_status == "필요":
             st.markdown("#### 2) 구간별 세굴깊이($S_m$) 산정 과정")
             if head_shape == "사각형 (Square)":
                 Sm_ratio = -0.09 + 0.123 * KC
-                Sm_val_raw = B_width * Sm_ratio
-                Sm_val = round(Sm_val_raw, 2)
                 st.latex(r"\frac{S_m}{B} = -0.09 + 0.123 \cdot KC \quad \text{(식 VI-5-258)}")
-            else: # 원형 (Circular)
+            else: 
                 Sm_ratio = -0.02 + 0.04 * KC
-                Sm_val_raw = B_width * Sm_ratio
-                Sm_val = round(Sm_val_raw, 2)
                 st.latex(r"\frac{S_m}{B} = -0.02 + 0.04 \cdot KC \quad \text{(식 VI-5-257)}")
                 
+            Sm_val = round(B_width * Sm_ratio, 2)
             st.latex(rf"S_m = {B_width} \times ({Sm_ratio:.4f}) = {Sm_val:.2f} \, m")
+            
             if Sm_val < 0:
                 st.warning(f"계산된 세굴심($S_m$)이 {Sm_val:.2f}m로 음수이므로, 물리적으로 세굴이 발생하지 않는 것으로 간주합니다.")
                 
@@ -299,15 +289,32 @@ if scour_status == "필요":
                 d_bar = h_bed / (g_val * (Tp**2))
                 
                 # =====================================================================
-                # Hughes and Fowler (1991) - CSV 데이터 연동 및 원본 그래프 재현 완벽 자동화
+                # 🔴 [핵심 수정 부분] CSV 데이터 다중 헤더 안전 파싱 및 동적 그래프 렌더링
                 # =====================================================================
                 load_success = False
                 try:
-                    df_tav = pd.read_csv("tav_data_all.csv", skiprows=2, header=None)
+                    # 1. 멀티헤더 구조 읽기 (skiprows 제거)
+                    df_raw = pd.read_csv("tav_data_all.csv", header=None)
                     
-                    x_raw = df_tav.iloc[:, 2].dropna().values
-                    y_raw = df_tav.iloc[:, 3].dropna().values
+                    # 2. 첫 번째 행의 NaN을 이전 값으로 채워 범례(Series 이름) 완성
+                    series_names = df_raw.iloc[0].ffill().astype(str)
                     
+                    # 3. 데이터 영역 파싱 (세 번째 행부터)
+                    data_tav = df_raw.iloc[2:].reset_index(drop=True)
+                    data_tav = data_tav.apply(pd.to_numeric, errors='coerce')
+                    
+                    # 4. Average 곡선을 찾아 독취용 보간 기준값으로 사용
+                    avg_cols = [i for i, name in enumerate(series_names) if "average" in name.lower()]
+                    
+                    if len(avg_cols) >= 2:
+                        x_raw = data_tav.iloc[:, avg_cols[0]].dropna().values
+                        y_raw = data_tav.iloc[:, avg_cols[1]].dropna().values
+                    else:
+                        # 파싱 실패 시 기본 3, 4번째 열 강제 매핑
+                        x_raw = data_tav.iloc[:, 2].dropna().values
+                        y_raw = data_tav.iloc[:, 3].dropna().values
+
+                    # PchipInterpolator 에러 방지 (X값 중복 제거 및 정렬)
                     x_unique, unique_idx = np.unique(x_raw, return_index=True)
                     y_unique = y_raw[unique_idx]
                     
@@ -315,7 +322,8 @@ if scour_status == "필요":
                     y_user = y_unique
                     load_success = True
                 except Exception as e:
-                    st.warning(f"'tav_data_all.csv' 데이터 연동 실패. 내장 기본 데이터를 사용합니다. ({e})")
+                    st.warning(f"🚨 'tav_data_all.csv' 파일 로드 실패. 앱 파일 경로를 확인해주세요. (에러: {e})")
+                    # 실패 시 내장 하드코딩 배열 사용
                     x_user = np.array([
                         0.0013, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 
                         0.01, 0.012, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05, 0.06
@@ -325,7 +333,7 @@ if scour_status == "필요":
                         1.062, 1.047, 1.033, 1.022, 1.016, 1.012, 1.008, 1.005, 1.003
                     ])
                 
-                # PCHIP 보간법 적용 (독취값 산출)
+                # 보간법을 통해 X(d_bar)값에 해당하는 Y(Hs_ratio) 독취값 산출
                 if x_user.min() <= d_bar <= x_user.max():
                     pchip = PchipInterpolator(x_user, y_user)
                     Hs_ratio_raw = float(pchip(d_bar))
@@ -340,109 +348,88 @@ if scour_status == "필요":
                 st.latex(r"H_s / H_{mo} = " + f"{Hs_ratio:.2f} \quad \text{{(도표 적용)}}")
                 st.latex(r"H_{mo} = \frac{H_s}{H_s / H_{mo}} = \frac{" + f"{H_input:.2f}" + r"}{" + f"{Hs_ratio:.2f}" + r"} = " + f"{Hmo:.2f} \, m")
                 
-                # ★ 스케일 조정: 원본 삽도와 동일한 박스 비율 (7 x 6.5)
+                # 원본 삽도와 동일한 비율로 동적 도표 렌더링
                 fig, ax = plt.subplots(figsize=(7, 6.5))
                 
                 if load_success:
-                    # 1. MAXIMUM 곡선 (실선) 및 지시선 선분 안착
-                    mx = df_tav.iloc[:, 0].dropna().values
-                    my = df_tav.iloc[:, 1].dropna().values
-                    if len(mx) > 1:
-                        mx_u, mu_idx = np.unique(mx, return_index=True)
-                        my_u = my[mu_idx]
-                        
-                        try:
-                            p_max = PchipInterpolator(mx_u, my_u)
-                            x_max_smooth = np.logspace(np.log10(mx_u.min()), np.log10(mx_u.max()), 100)
-                            y_max_smooth = p_max(x_max_smooth)
-                            ax.plot(x_max_smooth, y_max_smooth, 'k-', linewidth=1.5, zorder=2)
-                            
-                            x_target_max = 0.002
-                            y_pointer_max = float(p_max(x_target_max))
-                        except:
-                            ax.plot(mx_u, my_u, 'k-', linewidth=1.5, zorder=2)
-                            x_target_max = mx_u[len(mx_u)//3]
-                            y_pointer_max = my_u[len(my_u)//3]
-                            
-                        # 지시선 - MAXIMUM
-                        ax.annotate('MAXIMUM\n$H_s/H_{mo}$', xy=(x_target_max, y_pointer_max), xytext=(0.0003, 1.62),
-                                    arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.05", color='black', lw=1.2),
-                                    fontsize=11, ha='center', va='center', bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.9))
-
-                    # 2. PRE-BREAKING 한계선 (ε 곡선 전체) 구현
-                    eps_col_map = {
-                        '0.01': (4, 5), '0.008': (6, 7), '0.007': (8, 9), 
-                        '0.006': (10, 11), '0.005': (12, 13), '0.004': (14, 15), 
-                        '0.003': (16, 17), '0.002': (18, 19)
-                    }
+                    unique_series = series_names.unique()
                     
-                    for eps, (x_col, y_col) in eps_col_map.items():
-                        if x_col < len(df_tav.columns):
-                            ex = df_tav.iloc[:, x_col].dropna().values
-                            ey = df_tav.iloc[:, y_col].dropna().values
-                            if len(ex) > 1:
-                                ex_u, eu_idx = np.unique(ex, return_index=True)
-                                ey_u = ey[eu_idx]
+                    # CSV에 있는 모든 곡선(Maximum, Average, 0.01 등)을 동적으로 그리기
+                    for series in unique_series:
+                        s_name = str(series).strip()
+                        cols = [i for i, name in enumerate(series_names) if name == series]
+                        
+                        if len(cols) >= 2:
+                            ex = data_tav.iloc[:, cols[0]].dropna().values
+                            ey = data_tav.iloc[:, cols[1]].dropna().values
+                            if len(ex) < 2: continue
+                            
+                            # 중복/역방향 정렬 문제 해결
+                            ex_u, eu_idx = np.unique(ex, return_index=True)
+                            ey_u = ey[eu_idx]
+                            
+                            try:
+                                p_curve = PchipInterpolator(ex_u, ey_u)
+                                x_smooth = np.logspace(np.log10(ex_u.min()), np.log10(ex_u.max()), 100)
+                                y_smooth = p_curve(x_smooth)
+                            except:
+                                x_smooth, y_smooth = ex_u, ey_u
+                                p_curve = None
                                 
-                                try:
-                                    p_eps = PchipInterpolator(ex_u, ey_u)
-                                    ex_smooth = np.logspace(np.log10(ex_u.min()), np.log10(ex_u.max()), 50)
-                                    ey_smooth = p_eps(ex_smooth)
-                                    ax.plot(ex_smooth, ey_smooth, 'k-', linewidth=0.8, alpha=0.8, zorder=1)
-                                    
-                                    mid_idx = int(len(ex_smooth) * 0.45)
-                                    x_mid = ex_smooth[mid_idx]
-                                    y_mid = ey_smooth[mid_idx]
-                                except:
-                                    ax.plot(ex_u, ey_u, 'k-', linewidth=0.8, alpha=0.8, zorder=1)
-                                    mid_idx = len(ex_u) // 2
-                                    x_mid = ex_u[mid_idx]
-                                    y_mid = ey_u[mid_idx]
+                            s_name_lower = s_name.lower()
+                            
+                            # Maximum 렌더링
+                            if "maximum" in s_name_lower:
+                                ax.plot(x_smooth, y_smooth, 'k-', linewidth=1.5, zorder=2)
+                                x_tgt = 0.002
+                                try: y_ptr = float(p_curve(x_tgt)) if p_curve else ey_u[len(ey_u)//3]
+                                except: y_ptr = ey_u[len(ey_u)//3]
                                 
-                                eps_val = eps.replace("0.", ".") 
+                                ax.annotate('MAXIMUM\n$H_s/H_{mo}$', xy=(x_tgt, y_ptr), xytext=(0.0003, 1.62),
+                                            arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0.05", color='black', lw=1.2),
+                                            fontsize=11, ha='center', va='center', bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.9))
+                                            
+                            # Average 렌더링
+                            elif "average" in s_name_lower:
+                                ax.plot(x_smooth, y_smooth, 'k-', linewidth=1.8, label='AVERAGE Curve', zorder=3)
+                                x_tgt = 0.002
+                                try: y_ptr = float(p_curve(x_tgt)) if p_curve else ey_u[1]
+                                except: y_ptr = ey_u[1]
+                                
+                                ax.annotate('AVERAGE\n$H_s/H_{mo}$', xy=(x_tgt, y_ptr), xytext=(0.0003, 1.40),
+                                            arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.1", color='black', lw=1.2),
+                                            fontsize=11, ha='center', va='center', bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.9))
+                                            
+                            # Epsilon (0.01 등) 한계선 렌더링
+                            elif s_name.replace('.', '').isdigit():
+                                ax.plot(x_smooth, y_smooth, 'k-', linewidth=0.8, alpha=0.8, zorder=1)
+                                mid_idx = int(len(x_smooth) * 0.45) if len(x_smooth) > 10 else len(ex_u)//2
+                                x_mid = x_smooth[mid_idx]
+                                y_mid = y_smooth[mid_idx]
+                                
+                                eps_val = s_name.replace("0.", ".")
                                 ax.text(x_mid, y_mid, f"$\\epsilon={eps_val}$", fontsize=9, rotation=45, 
                                         ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none', pad=0.1, alpha=0.8))
-                
-                # 3. AVERAGE 곡선 플롯 및 지시선 선분 안착
-                try:
-                    p_avg = PchipInterpolator(x_user, y_user)
-                    x_avg_smooth = np.logspace(np.log10(x_user.min()), np.log10(x_user.max()), 100)
-                    y_avg_smooth = p_avg(x_avg_smooth)
-                    ax.plot(x_avg_smooth, y_avg_smooth, 'k-', linewidth=1.8, label='AVERAGE Curve', zorder=3)
-                    
-                    x_target_avg = 0.002
-                    y_pointer_avg = float(p_avg(x_target_avg))
-                except:
-                    ax.plot(x_user, y_user, 'k-', linewidth=1.8, label='AVERAGE Curve', zorder=3)
-                    x_target_avg = x_user[1]
-                    y_pointer_avg = y_user[1]
 
-                # 지시선 - AVERAGE
-                ax.annotate('AVERAGE\n$H_s/H_{mo}$', xy=(x_target_avg, y_pointer_avg), xytext=(0.0003, 1.40),
-                            arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.1", color='black', lw=1.2),
-                            fontsize=11, ha='center', va='center', bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.9))
+                    # PRE-BREAKING 지시선 추가
+                    ax.text(0.012, 1.25, "PRE-BREAKING", fontsize=11, ha='left', va='center')
+                    ax.annotate('', xy=(0.005, 1.15), xytext=(0.011, 1.25), 
+                                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.15", color='black', lw=1.0, alpha=0.9))
                 
-                # 4. PRE-BREAKING 텍스트 및 단일 지시선
-                ax.text(0.012, 1.25, "PRE-BREAKING", fontsize=11, ha='left', va='center')
-                ax.annotate('', xy=(0.005, 1.15), xytext=(0.011, 1.25), 
-                            arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-0.15", color='black', lw=1.0, alpha=0.9))
-                
-                # 5. 현재 계산된 위치 마킹 (파란 점, 십자선, 그리고 독취값 라벨)
+                # 현재 계산된 설계점 마킹
                 ax.plot(d_bar, Hs_ratio, 'bo', markersize=6, zorder=5)
                 ax.axvline(x=d_bar, color='b', linestyle='--', alpha=0.8, linewidth=1.5, zorder=4)
                 ax.axhline(y=Hs_ratio, color='b', linestyle='--', alpha=0.8, linewidth=1.5, zorder=4)
                 
-                # 독취값 박스
                 ax.text(d_bar * 1.05, Hs_ratio + 0.015, f"({d_bar:.2e}, {Hs_ratio:.2f})", 
                         color='blue', fontsize=11, fontweight='bold', ha='left', va='bottom',
                         bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.9), zorder=6)
                 
-                # 축 스케일 및 제한
+                # 축 설정
                 ax.set_xscale('log')
                 ax.set_xlim(1e-4, 1e-1)
                 ax.set_ylim(0.9, 1.7)
                 
-                # ★ 원본 감성 디테일: 틱(Tick) 방향 안쪽(in) 및 테두리 두껍게
                 ax.tick_params(axis='both', which='major', direction='in', length=8, width=1.5, labelsize=11)
                 ax.tick_params(axis='both', which='minor', direction='in', length=4, width=1)
                 for spine in ax.spines.values():
@@ -450,8 +437,6 @@ if scour_status == "필요":
                 
                 ax.set_xlabel(r'$\bar{d} = d / g T_p^2$', fontsize=13)
                 ax.set_ylabel(r'$H_s / H_{mo}$', fontsize=13)
-                
-                # 원본 삽도처럼 내부 그리드는 끄기
                 ax.grid(False)
                 
                 col_graph, _ = st.columns([1, 1]) 
@@ -471,7 +456,7 @@ if scour_status == "필요":
                 Sm_val = round(Sm_val_raw, 2)
                 st.latex(r"S_m = (U_{rms})_m T_p \frac{0.05}{[\sinh(k_p h)]^{0.35}} = " + f"{Sm_val:.2f} \, m")
                 
-    else: 
+    else: # 경사제
         if location_type == "제두부 (Head)":
             st.markdown("#### 경사제 제두부 세굴심도 산정 과정")
         else:
@@ -480,7 +465,6 @@ if scour_status == "필요":
         Tp = 1.05 * T_input
         st.latex(rf"T_p = 1.05 T_s = 1.05 \times {T_input:.2f} = {Tp:.2f} \, s")
         
-        # 🌟 에러 방지: math.sqrt 안에는 무조건 양수(abs)만 들어가도록 방어
         term = (Tp * math.sqrt(abs(g_val * H_input))) / h_bed
         Sm_ratio = 0.01 * Cu_input * (term**1.5)
         Sm_val_raw = H_input * Sm_ratio
@@ -510,38 +494,26 @@ if scour_status == "필요":
         st.info(f"**최종 설계두께 ($t = 2r$): {thickness:.2f} m**")
 
     # ==========================================
-    # ★ 수정: 선명한 이미지(`image_efd977.png`) 교체 및 정밀 Crop & 선명도 보정
+    # 선명한 이미지(`image_efd977.png`) Crop & 보정
     # ==========================================
     try:
-        # 사용자가 제공한 선명한 이미지 파일명으로 교체
         img_path = "image_efd977.png"
         img = Image.open(img_path)
         w, h = img.size
         
-        # --- ★ 이미지 선명도 및 대비 보정 로직 추가 ---
-        # 1. 대비(Contrast) 살짝 향상
         enhancer_contrast = ImageEnhance.Contrast(img)
-        img = enhancer_contrast.enhance(1.2)  # 1.0이 원본, 1.2로 약간 향상
+        img = enhancer_contrast.enhance(1.2)  
         
-        # 2. 선명도(Sharpness) 대폭 향상 (강하게)
         enhancer_sharpness = ImageEnhance.Sharpness(img)
-        img = enhancer_sharpness.enhance(1.8)  # 1.0이 원본, 1.8로 강하게 선명하게
+        img = enhancer_sharpness.enhance(1.8) 
         
         if "매설형" in protection_type:
-            # 매설형(Buried Type): 왼쪽 전체를 유지하되, 
-            # 오른쪽 그림의 잔재(텍스트 등)가 나오지 않도록 경계를 왼쪽으로 더 당김
-            # 원본 대비 약 49% 지점까지 자름
             cropped_img = img.crop((0, 0, int(w * 0.49), h)) 
         else:
-            # 사석마운드형(Berm Type): 오른쪽 전체를 유지하되,
-            # 왼쪽 그림의 잔재가 나오지 않도록 경계를 오른쪽으로 더 밂
-            # 원본 대비 약 51% 지점부터 자름
             cropped_img = img.crop((int(w * 0.51), 0, w, h))
             
         st.markdown(f"**[{protection_type.split(' ')[0]} 산정 기준 삽도 (보정됨)]**")
         
-        # 선명하게 보이기 위해 화면 레이아웃 비율 조정 (중앙 배치, 약간 작게)
-        # 컬럼 비율을 [1.2, 1.5, 1.2]로 조정하여 이전보다 그림 폭을 약간 줄여 선명도 유지
         col_img1, col_img2, col_img3 = st.columns([1.2, 1.5, 1.2])
         with col_img2:
             st.image(cropped_img, use_container_width=True)
@@ -553,7 +525,7 @@ else:
     st.write("원지반이 안정하여 추가적인 보강 계획이 필요하지 않습니다.")
 
 # ==========================================
-# ★ 추가: 전체결과 요약표 렌더링 (맨 위 st.empty 컨테이너에 삽입)
+# ★ 전체결과 요약표 렌더링
 # ==========================================
 with summary_placeholder.container():
     st.header("📋 전체 산정 결과 요약")
