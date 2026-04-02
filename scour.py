@@ -5,9 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import PchipInterpolator
 from PIL import Image, ImageEnhance
-import os # ★ 추가: 파일 경로 문제 해결을 위한 모듈
+import os  # ★ 추가: 파일 경로 문제 해결을 위한 모듈
 
-# ★ 추가: 현재 실행 중인 스크립트 파일(scour.py)이 위치한 폴더의 절대 경로를 가져옵니다.
+# ★ 추가: 현재 스크립트 파일이 위치한 폴더의 절대 경로를 가져옵니다.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ==========================================
@@ -303,11 +303,11 @@ if scour_status == "필요":
                 d_bar = h_bed / (g_val * (Tp**2))
                 
                 # =====================================================================
-                # ★ 데이터 누락 방지 및 원본 완벽 재현을 위한 삽도 그리기 강제 로직 추가 ★
+                # ★ 파일 누락 방지 및 원본(MAX, EPSILON) 완벽 재현을 위한 도표 그리기 로직
                 # =====================================================================
                 load_success = False
                 try:
-                    # ★ 수정: 경로를 절대 경로(BASE_DIR)로 안전하게 지정
+                    # 절대 경로로 안전하게 파일 연동
                     csv_path = os.path.join(BASE_DIR, "tav_data_all.csv")
                     df_tav = pd.read_csv(csv_path, skiprows=2, header=None)
                     for col in df_tav.columns:
@@ -326,7 +326,7 @@ if scour_status == "필요":
                     # CSV가 없더라도 앱이 멈추지 않고, 평균선 계산은 되도록 기본 데이터 주입
                     x_user = np.array([0.0013, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.01, 0.012, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05, 0.06])
                     y_user = np.array([1.475, 1.340, 1.245, 1.185, 1.145, 1.118, 1.097, 1.082, 1.071, 1.062, 1.047, 1.033, 1.022, 1.016, 1.012, 1.008, 1.005, 1.003])
-                    st.warning(f"⚠️ 'tav_data_all.csv' 연동 실패. 내장 데이터로 도표를 자동 복구합니다. ({e})")
+                    st.warning(f"⚠️ 'tav_data_all.csv' 파일을 찾을 수 없습니다. (앱 내장 데이터로 도표를 자동 복구하여 전체 출력합니다.)")
                 
                 # 독취값 보간
                 if x_user.min() <= d_bar <= x_user.max():
@@ -343,7 +343,7 @@ if scour_status == "필요":
                 st.latex(r"H_s / H_{mo} = " + f"{Hs_ratio:.2f} \quad \text{{(도표 적용)}}")
                 st.latex(r"H_{mo} = \frac{H_s}{H_s / H_{mo}} = \frac{" + f"{H_input:.2f}" + r"}{" + f"{Hs_ratio:.2f}" + r"} = " + f"{Hmo:.2f} \, m")
                 
-                # ----------------------- 그래프 그리기 -----------------------
+                # ----------------------- 도표 그리기 -----------------------
                 fig, ax = plt.subplots(figsize=(7, 6.5))
                 
                 if load_success:
@@ -377,7 +377,7 @@ if scour_status == "필요":
                                     y_lab = np.interp(x_lab, ex_u, ey_u)
                                     ax.text(x_lab, y_lab, eps.replace("0.", "."), fontsize=9, rotation=45, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none', pad=0.1, alpha=0.8))
                 else:
-                    # CSV 파일 누락시에도 완벽한 그림 출력을 위한 강제 내장 데이터 삽입
+                    # CSV 파일 누락시에도 완벽한 도표 출력을 위한 강제 내장 데이터 (Maximum + Epsilon) 삽입
                     fb_max_x = np.array([0.001, 0.002, 0.004, 0.008, 0.015, 0.03, 0.06])
                     fb_max_y = np.array([1.68, 1.48, 1.32, 1.18, 1.09, 1.03, 1.01])
                     p_max = PchipInterpolator(fb_max_x, fb_max_y)
@@ -403,7 +403,7 @@ if scour_status == "필요":
                         if fx[0] < x_lab < fx[-1]:
                             ax.text(x_lab, float(pf_eps(x_lab)), eps.replace("0.", "."), fontsize=9, rotation=45, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none', pad=0.1, alpha=0.8))
                 
-                # 3. AVERAGE 곡선 플롯 (CSV 존재 여부와 상관없이 무조건 그림)
+                # 3. AVERAGE 곡선 플롯 (CSV 존재 여부와 상관없이 무조건 출력)
                 s_idx = np.argsort(x_user)
                 xu, yu = x_user[s_idx], y_user[s_idx]
                 p_avg = PchipInterpolator(xu, yu)
@@ -501,34 +501,34 @@ if scour_status == "필요":
         st.info(f"**최종 설계두께 ($t = 2r$): {thickness:.2f} m**")
 
     # ==========================================
-    # ★ 수정: 이미지 Crop 시 짤림 현상 완전 방지 (정확히 절반(50%)만 자르기)
+    # ★ 수정: 이미지 단 1픽셀도 안 잘리게 정중앙 50% 분할
     # ==========================================
     try:
-        # ★ 수정: 경로를 절대 경로(BASE_DIR)로 지정
+        # 절대 경로로 이미지 파일 읽기
         img_path = os.path.join(BASE_DIR, "image_efd977.png")
         img = Image.open(img_path)
         w, h = img.size
         
-        # 이미지 선명도 및 대비 보정 로직
+        # 이미지 선명도 및 대비 보정 (강하게)
         enhancer_contrast = ImageEnhance.Contrast(img)
         img = enhancer_contrast.enhance(1.2)  
         
         enhancer_sharpness = ImageEnhance.Sharpness(img)
         img = enhancer_sharpness.enhance(1.8)  
         
-        # 단 1픽셀도 잘려나가지 않도록 정확히 절반을 가르는 기준선(50%) 지정
+        # 짤림 방지를 위해 정확하게 가운데 50%를 기준으로 자름
         mid_x = w // 2
         
         if "매설형" in protection_type:
-            # 매설형(Buried Type): 왼쪽 50%를 100% 온전하게 표시
+            # 매설형(Buried Type): 왼쪽 50%를 100% 온전하게 표시 (0 ~ mid_x)
             cropped_img = img.crop((0, 0, mid_x, h)) 
         else:
-            # 사석마운드형(Berm Type): 오른쪽 50%를 100% 온전하게 표시
+            # 사석마운드형(Berm Type): 오른쪽 50%를 100% 온전하게 표시 (mid_x ~ w)
             cropped_img = img.crop((mid_x, 0, w, h))
             
         st.markdown(f"**[{protection_type.split(' ')[0]} 산정 기준 삽도 (보정됨)]**")
         
-        # 요청하신 [1.2, 1.5, 1.2] 코딩 크기를 그대로 유지
+        # 요청하신 비율을 그대로 유지하여 화면 중앙에 적절한 크기로 배치
         col_img1, col_img2, col_img3 = st.columns([1.2, 1.5, 1.2])
         with col_img2:
             st.image(cropped_img, use_container_width=True)
