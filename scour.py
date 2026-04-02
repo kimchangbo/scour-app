@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import PchipInterpolator
 from PIL import Image, ImageEnhance
+import os
 
 # ==========================================
 # 1. 페이지 설정
@@ -267,7 +268,7 @@ if scour_status == "필요":
             st.latex(rf"S_m = {B_width} \times ({Sm_ratio:.4f}) = {Sm_val:.2f} \, m")
             
             if Sm_val < 0:
-                st.warning(f"계산된 세굴심($S_m$)이 {Sm_val:.2f}m로 음수이므로, 물리적으로 세굴이 발생하지 않는 것으로 간주합니다.")
+                st.warning(f"계산된 세굴심($S_m$)이 {Sm_val:.2f}m로 음수이므로, 물리적으로 세굴이 발생하지 참조합니다.")
                 
         else: # 제간부 (Trunk)
             if "Xie" in wave_condition:
@@ -293,8 +294,12 @@ if scour_status == "필요":
                 # =====================================================================
                 load_success = False
                 try:
+                    # 💡 파일의 절대 경로를 동적으로 생성 (에러 방지)
+                    current_dir = os.path.dirname(os.path.abspath(__file__))
+                    csv_path = os.path.join(current_dir, "tav_data_all.csv")
+                    
                     # 1. 멀티헤더 구조 읽기 (skiprows 제거)
-                    df_raw = pd.read_csv("tav_data_all.csv", header=None)
+                    df_raw = pd.read_csv(csv_path, header=None)
                     
                     # 2. 첫 번째 행의 NaN을 이전 값으로 채워 범례(Series 이름) 완성
                     series_names = df_raw.iloc[0].ffill().astype(str)
@@ -497,7 +502,10 @@ if scour_status == "필요":
     # 선명한 이미지(`image_efd977.png`) Crop & 보정
     # ==========================================
     try:
-        img_path = "image_efd977.png"
+        # 💡 이미지 경로도 동적으로 생성하도록 추가 보완
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        img_path = os.path.join(current_dir, "image_efd977.png")
+        
         img = Image.open(img_path)
         w, h = img.size
         
