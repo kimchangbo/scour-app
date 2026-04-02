@@ -30,7 +30,7 @@ def calc_wave_length(T, h):
     return max(L_curr, 0.001)
 
 st.title("🌊 항외측 세굴방지공 단면제원 자동 계산")
-st.markdown("### Thompson and Vincent 도표 및 모든 산정 결과 통합")
+st.markdown("### Thompson and Vincent 도표 연동 및 전체 산정 결과")
 
 # 결과 요약표가 들어갈 상단 홀더
 summary_placeholder = st.empty()
@@ -50,6 +50,7 @@ st.sidebar.markdown("---")
 structure_type = st.sidebar.radio("구조물 형식", ["직립제 (Vertical)", "경사제 (Rubble Mound)"])
 location_type = st.sidebar.radio("적용 구간", ["제두부 (Head)", "제간부 (Trunk)"])
 
+Cu_input = 1.0
 if structure_type == "직립제 (Vertical)":
     if location_type == "제두부 (Head)":
         head_shape = st.sidebar.radio("제두부 형상", ["사각형 (Square)", "원형 (Circular)"])
@@ -81,8 +82,8 @@ def run_sato_tanaka(alpha):
     h_curr = 15.0
     for _ in range(15):
         L = calc_wave_length(T_input, h_curr)
-        const = alpha * ((ds_input / ((9.81 * T_input**2)/(2*math.pi)))**(1/3))
-        h_next = L * math.asinh((H_input/L) / const) / (2 * math.pi)
+        constant = alpha * ((ds_input / ((9.81 * T_input**2)/(2*math.pi)))**(1/3))
+        h_next = L * math.asinh((H_input/L) / constant) / (2 * math.pi)
         if abs(h_curr - h_next) < 0.001: break
         h_curr = h_next
     return h_curr
@@ -116,94 +117,92 @@ if scour_status == "필요":
     W_final_ton = W_max_kN / 9.81
     control_factor = "파랑 (Wave)" if W_wave >= W_tidal else "조류 (Tidal)"
 
-    # --- 나. 세굴심도 상세 산정 ---
-    if structure_type == "직립제 (Vertical)" and location_type == "제간부 (Trunk)" and "Hughes" in wave_condition:
-        Tp = 1.05 * T_input
-        Lp = calc_wave_length(Tp, h_bed)
-        kp = 2 * math.pi / Lp
-        kph = kp * h_bed
-        d_bar = h_bed / (9.81 * (Tp**2))
-
-        try:
-            csv_path = os.path.join(BASE_DIR, "tav_data_all.csv")
-            df_tav = pd.read_csv(csv_path, skiprows=2, header=None)
-            for col in df_tav.columns: df_tav[col] = pd.to_numeric(df_tav[col], errors='coerce')
-
-            fig, ax = plt.subplots(figsize=(8.5, 7.5))
-            
-            # 원본 코드의 각도/위치 계산 로직 그대로 적용
-            eps_data = [
-                ('0.01', 4, 5, 0.0013), ('0.008', 6, 7, 0.0016), ('0.007', 8, 9, 0.0020),
-                ('0.006', 10, 11, 0.0026), ('0.005', 12, 13, 0.0035), ('0.004', 14, 15, 0.0050),
-                ('0.003', 16, 17, 0.0075), ('0.002', 18, 19, 0.012)
-            ]
-
-            ax.text(0.0006, 1.05, r'$\epsilon =$', fontsize=11, fontweight='bold', zorder=4)
-
-            for name, xc, yc, tx in eps_data:
-                ex, ey = df_tav.iloc[:, xc].dropna().values, df_tav.iloc[:, yc].dropna().values
-                if len(ex) > 1:
-                    s_idx = np.argsort(ex)
-                    p_eps = PchipInterpolator(ex[s_idx], ey[s_idx])
-                    xs = np.logspace(np.log10(ex.min()), np.log10(ex.max()), 100)
-                    ax.plot(xs, p_eps(xs), 'k-', linewidth=0.8, alpha=0.5, zorder=1)
+    # --- 나. 세굴심도 상세 산정 (로직 분리) ---
+    if structure_type == "직립제 (Vertical)":
+        if location_type == "제두부 (Head)":
+            KC = (u_bottom * T_input) / B_width
+            Sm_ratio = (-0.09 + 0.123 * KC) if head_shape == "사각형 (Square)" else (-0.02 + 0.04 * KC)
+            Sm_val = round(B_width * Sm_ratio, 2)
+        else: # 제간부
+            if "Xie" in wave_condition:
+                Sm_val = round((0.4 * H_input) / (math.sinh(kh_init)**1.35), 2)
+            else: # Hughes & Fowler (1991)
+                Tp = 1.05 * T_input
+                Lp = calc_wave_length(Tp, h_bed)
+                kp = 2 * math.pi / Lp
+                kph = kp * h_bed
+                d_bar = h_bed / (9.81 * (Tp**2))
+                
+                # 1. 도표용 Hs_ratio 먼저 계산
+                Hs_ratio = 1.0 # 기본값
+                try:
+                    csv_path = os.path.join(BASE_DIR, "tav_data_all.csv")
+                    df_tav = pd.read_csv(csv_path, skiprows=2, header=None)
+                    for col in df_tav.columns: df_tav[col] = pd.to_numeric(df_tav[col], errors='coerce')
                     
-                    # 기울기에 맞춰 숫자 눕히기 (원본 로직)
-                    lab_x = max(ex.min()*1.05, min(tx, ex.max()*0.95))
-                    lab_y = float(p_eps(lab_x))
-                    dx = lab_x * 0.05
-                    dy = float(p_eps(lab_x + dx)) - lab_y
-                    slope = np.degrees(np.arctan2(dy, (np.log10(lab_x+dx)-np.log10(lab_x))*5))
-                    ax.text(lab_x, lab_y, rf"$\epsilon={name}$", fontsize=8.5, rotation=slope, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none', pad=0.1), zorder=2)
+                    # AVERAGE 곡선 데이터로 Hs_ratio 보간
+                    ax_raw = df_tav.iloc[:, 2].dropna().values
+                    ay_raw = df_tav.iloc[:, 3].dropna().values
+                    s_idx = np.argsort(ax_raw)
+                    p_avg = PchipInterpolator(ax_raw[s_idx], ay_raw[s_idx])
+                    Hs_ratio = float(p_avg(d_bar)) if ax_raw.min() <= d_bar <= ax_raw.max() else float(np.interp(d_bar, ax_raw[s_idx], ay_raw[s_idx]))
+                except:
+                    pass
+                
+                # 2. 도표 출력 (별도 try-except로 감싸서 에러 시에도 아래 계산이 되도록 함)
+                try:
+                    fig, ax = plt.subplots(figsize=(8.5, 7.5))
+                    eps_list = [('0.01', 4, 5, 0.0013), ('0.008', 6, 7, 0.0016), ('0.007', 8, 9, 0.0020),
+                                ('0.006', 10, 11, 0.0026), ('0.005', 12, 13, 0.0035), ('0.004', 14, 15, 0.0050),
+                                ('0.003', 16, 17, 0.0075), ('0.002', 18, 19, 0.012)]
+                    ax.text(0.0006, 1.05, r'$\epsilon =$', fontsize=11, fontweight='bold', zorder=4)
+                    for name, xc, yc, tx in eps_list:
+                        ex, ey = df_tav.iloc[:, xc].dropna().values, df_tav.iloc[:, yc].dropna().values
+                        if len(ex) > 1:
+                            s_idx = np.argsort(ex)
+                            p_eps = PchipInterpolator(ex[s_idx], ey[s_idx])
+                            xs = np.logspace(np.log10(ex.min()), np.log10(ex.max()), 100)
+                            ax.plot(xs, p_eps(xs), 'k-', linewidth=0.8, alpha=0.5, zorder=1)
+                            lab_x = max(ex.min()*1.05, min(tx, ex.max()*0.95))
+                            lab_y = float(p_eps(lab_x))
+                            dx = lab_x * 0.05
+                            dy = float(p_eps(lab_x + dx)) - lab_y
+                            slope = np.degrees(np.arctan2(dy, (np.log10(lab_x+dx)-np.log10(lab_x))*5))
+                            ax.text(lab_x, lab_y, rf"$\epsilon={name}$", fontsize=8.5, rotation=slope, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none', pad=0.1), zorder=2)
+                    
+                    for c_idx, name, y_pos in [(0, 'MAXIMUM', 1.76), (2, 'AVERAGE', 1.70)]:
+                        rx, ry = df_tav.iloc[:, c_idx].dropna().values, df_tav.iloc[:, c_idx+1].dropna().values
+                        idx = np.argsort(rx)
+                        p_curve = PchipInterpolator(rx[idx], ry[idx])
+                        ax.plot(np.logspace(np.log10(rx.min()), np.log10(rx.max()), 100), p_curve(np.logspace(np.log10(rx.min()), np.log10(rx.max()), 100)), 'k-', linewidth=2.0, zorder=3)
+                        ax.text(0.00015, y_pos, f"{name}\n$H_s/H_{{mo}}$", fontsize=10, bbox=dict(facecolor='white', edgecolor='none', pad=0.2), zorder=4)
 
-            # MAXIMUM & AVERAGE (굵은 실선)
-            for col_idx, label, text_y in [(0, 'MAXIMUM', 1.76), (2, 'AVERAGE', 1.70)]:
-                rx, ry = df_tav.iloc[:, col_idx].dropna().values, df_tav.iloc[:, col_idx+1].dropna().values
-                idx = np.argsort(rx)
-                p_curve = PchipInterpolator(rx[idx], ry[idx])
-                ax.plot(np.logspace(np.log10(rx.min()), np.log10(rx.max()), 100), p_curve(np.logspace(np.log10(rx.min()), np.log10(rx.max()), 100)), 'k-', linewidth=2.0, zorder=3)
-                ax.text(0.00015, text_y, f"{label}\n$H_s/H_{{mo}}$", fontsize=10, bbox=dict(facecolor='white', edgecolor='none', pad=0.2), zorder=4)
-                if label == 'AVERAGE': Hs_ratio = float(p_curve(d_bar))
+                    ax.annotate('MAXIMUM', xy=(0.002, 1.48), xytext=(0.0003, 1.62), arrowprops=dict(arrowstyle="->"), fontsize=10)
+                    ax.annotate('AVERAGE', xy=(0.002, 1.34), xytext=(0.0003, 1.40), arrowprops=dict(arrowstyle="->"), fontsize=10)
+                    ax.text(0.012, 1.25, "PRE-BREAKING", fontsize=10); ax.annotate('', xy=(0.005, 1.15), xytext=(0.011, 1.25), arrowprops=dict(arrowstyle="->"))
+                    ax.axvline(d_bar, color='b', linestyle='--'); ax.axhline(Hs_ratio, color='b', linestyle='--')
+                    ax.plot(d_bar, Hs_ratio, 'bo', markersize=6)
+                    ax.text(d_bar*1.1, Hs_ratio+0.02, f"({d_bar:.2e}, {Hs_ratio:.2f})", color='b', fontweight='bold')
+                    ax.set_xscale('log'); ax.set_xlim(1e-4, 1e-1); ax.set_ylim(0.9, 1.8); ax.tick_params(direction='in', which='both', length=6)
+                    
+                    st.pyplot(fig)
+                except Exception as e:
+                    st.warning(f"도표 출력 중 시각화 에러가 발생했습니다: {e}")
 
-            # 지시선 및 가이드선
-            ax.annotate('MAXIMUM', xy=(0.002, 1.48), xytext=(0.0003, 1.62), arrowprops=dict(arrowstyle="->"), fontsize=10)
-            ax.annotate('AVERAGE', xy=(0.002, 1.34), xytext=(0.0003, 1.40), arrowprops=dict(arrowstyle="->"), fontsize=10)
-            ax.text(0.012, 1.25, "PRE-BREAKING", fontsize=10); ax.annotate('', xy=(0.005, 1.15), xytext=(0.011, 1.25), arrowprops=dict(arrowstyle="->"))
-            
-            ax.axvline(d_bar, color='b', linestyle='--'); ax.axhline(Hs_ratio, color='b', linestyle='--')
-            ax.plot(d_bar, Hs_ratio, 'bo', markersize=6)
-            ax.text(d_bar*1.1, Hs_ratio+0.02, f"({d_bar:.2e}, {Hs_ratio:.2f})", color='b', fontweight='bold')
-
-            ax.set_xscale('log'); ax.set_xlim(1e-4, 1e-1); ax.set_ylim(0.9, 1.8)
-            ax.tick_params(direction='in', which='both', length=6)
-            
-            # 그래프 출력
-            col_plt, _ = st.columns([1, 1])
-            with col_plt: st.pyplot(fig)
-
-            # 세굴심 계산
-            Hmo = H_input / Hs_ratio
-            Urms = (9.81 * kp * Tp * Hmo) * (math.sqrt(2)/(4*math.pi*math.cosh(kph))) * (0.54 * math.cosh((1.5-kph)/2.8))
-            Sm_val = round((Urms * Tp * 0.05) / (math.sinh(kph)**0.35), 2)
-            st.markdown(f"**Hughes and Fowler (1991) 세굴심 산정:** $S_m = {Sm_val:.2f}$ m")
-        except Exception as e:
-            st.error(f"도표 연동 실패: {e}")
-            Sm_val = 0.0
-
-    elif structure_type == "직립제 (Vertical)" and location_type == "제두부 (Head)":
-        KC = (u_bottom * T_input) / B_width
-        Sm_ratio = (-0.09 + 0.123 * KC) if head_shape == "사각형 (Square)" else (-0.02 + 0.04 * KC)
-        Sm_val = round(B_width * Sm_ratio, 2)
-        st.markdown(f"**제두부 세굴심 산정:** $S_m = {Sm_val:.2f}$ m")
+                # 3. 실제 세굴심 산정 (도표 출력과 무관하게 무조건 실행)
+                Hmo = H_input / Hs_ratio
+                Urms = (9.81 * kp * Tp * Hmo) * (math.sqrt(2)/(4*math.pi*math.cosh(kph))) * (0.54 * math.cosh((1.5-kph)/2.8))
+                Sm_val = round((Urms * Tp * 0.05) / (math.sinh(kph)**0.35), 2)
+                st.markdown(f"**수평바닥유속 rms 및 세굴심 산정:** $(U_{{rms}})_m = {Urms:.4f}$ m/s, $S_m = {Sm_val:.2f}$ m")
 
     else: # 경사제
         Tp = 1.05 * T_input
         Sm_val = round(H_input * 0.01 * Cu_input * ((Tp * math.sqrt(9.81*H_input))/h_bed)**1.5, 2)
-        st.markdown(f"**경사제 세굴심 산정:** $S_m = {Sm_val:.2f}$ m")
+        st.markdown(f"**경사제 세굴심 산정 결과:** $S_m = {Sm_val:.2f}$ m")
 
     # --- 다. 보강폭 및 두께 산정 ---
-    final_sm = max(0.0, Sm_val)
-    B_sp = (2.0 if "매설형" in protection_type else 3.0) * final_sm
+    final_sm_val = max(0.0, Sm_val)
+    B_sp = (2.0 if "매설형" in protection_type else 3.0) * final_sm_val
     thickness = 2.0 * r_stone
     
     st.subheader("다. 세굴방지 보강폭($B_{sp}$) 및 두께($t$) 산정")
@@ -217,22 +216,21 @@ if scour_status == "필요":
         img = Image.open(img_path)
         img = ImageEnhance.Contrast(img).enhance(1.2); img = ImageEnhance.Sharpness(img).enhance(2.0)
         w, h = img.size
-        # 잔재 제거를 위해 46% / 54% 지점으로 정밀하게 자름
         if "매설형" in protection_type:
             cropped = img.crop((0, 0, int(w*0.46), h)) 
         else:
             cropped = img.crop((int(w*0.54), 0, w, h))
-        st.markdown(f"**[{protection_type.split(' ')[0]}] 기준 삽도**")
+        st.markdown(f"**[{protection_type}] 기준 단면 삽도**")
         c1, c2, c3 = st.columns([1.2, 1.5, 1.2])
         with c2: st.image(cropped, use_column_width=True)
     except:
-        st.warning("⚠️ 삽도 이미지('image_efd977.png')를 찾을 수 없습니다.")
+        st.warning("⚠️ 'image_efd977.png' 이미지를 불러올 수 없습니다.")
 
 else:
     st.write("원지반이 안정하여 보강 계획이 필요하지 않습니다.")
 
 # ==========================================
-# 5. 전체 결과 요약표 출력 (상단 홀더에 렌더링)
+# 5. 전체 결과 요약표 출력 (상단 홀더)
 # ==========================================
 with summary_placeholder.container():
     st.header("📋 전체 산정 결과 요약")
@@ -243,5 +241,5 @@ with summary_placeholder.container():
         }).set_index("항목")
         st.table(sum_df)
     else:
-        st.success("✅ 원지반 안정으로 보강 불필요")
+        st.success("✅ 원지반 안정으로 추가 보강이 불필요합니다.")
     st.markdown("---")
