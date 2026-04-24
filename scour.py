@@ -6,7 +6,11 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import PchipInterpolator
 from PIL import Image, ImageEnhance
 import os
-
+with st.sidebar:
+    st.markdown("---")
+    st.write("**제작자:** [김창보]")
+    st.write("**소속:** [다온기술]")
+    st.caption("© 2026 All rights reserved.")
 # ==========================================
 # 1. 페이지 설정
 # ==========================================
